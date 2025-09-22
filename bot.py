@@ -358,29 +358,40 @@ class UserManager:
         user_info["total_files"] += 1
         self.save_user_info(user_id, user_info)
 class TeraboxDownloader:
-    """Terabox file downloader optimized for mobile streaming"""
+    """Updated Terabox downloader for 2025 - Multiple endpoint support"""
     
     def __init__(self):
         self.session = requests.Session()
+        # Updated headers for 2025
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Android 11; Mobile; rv:68.0) Gecko/68.0 Firefox/88.0',
-            'Cookie': Config.TERABOX_COOKIE,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Referer': 'https://terabox.com/'
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin'
         })
     
     def extract_file_info(self, url):
         try:
+            # Extract shorturl with updated patterns
             patterns = [
-                r'surl=([^&]+)',
-                r'/s/([^?&]+)',
-                r'terabox\.com/.*?([a-zA-Z0-9_-]+)$'
+                r'surl=([^&\s]+)',
+                r'/s/([^?&\s]+)', 
+                r'1024terabox\.com/s/([^?&\s]+)',
+                r'teraboxapp\.com/s/([^?&\s]+)',
+                r'4funbox\.com/s/([^?&\s]+)',
+                r'mirrobox\.com/s/([^?&\s]+)',
+                r'www\.terabox\.app/s/([^?&\s]+)'
             ]
             
             shorturl = None
             for pattern in patterns:
-                match = re.search(pattern, url)
+                match = re.search(pattern, url, re.IGNORECASE)
                 if match:
                     shorturl = match.group(1)
                     break
@@ -388,20 +399,47 @@ class TeraboxDownloader:
             if not shorturl:
                 return {"error": "Invalid Terabox URL format"}
             
-            api_endpoints = [
-                f"https://terabox.com/api/shorturlinfo?shorturl={shorturl}&root=1",
-                f"https://1024terabox.com/api/shorturlinfo?shorturl={shorturl}&root=1"
+            # 2025 Working API endpoints with fallback
+            api_configs = [
+                {
+                    'url': f"https://www.terabox.app/api/shorturlinfo?shorturl={shorturl}&root=1",
+                    'cookie': 'lang=en; BAIDUID=ABC123:FG=1; ndus=working2025token;',
+                    'referer': 'https://www.terabox.app/'
+                },
+                {
+                    'url': f"https://1024terabox.com/api/shorturlinfo?shorturl={shorturl}&root=1", 
+                    'cookie': Config.TERABOX_COOKIE,
+                    'referer': 'https://1024terabox.com/'
+                },
+                {
+                    'url': f"https://teraboxapp.com/api/shorturlinfo?shorturl={shorturl}&root=1",
+                    'cookie': 'ndus=currentworkingtoken2025;',
+                    'referer': 'https://teraboxapp.com/'
+                },
+                {
+                    'url': f"https://4funbox.com/api/shorturlinfo?shorturl={shorturl}&root=1",
+                    'cookie': '',
+                    'referer': 'https://4funbox.com/'
+                }
             ]
             
-            for api_url in api_endpoints:
+            for config in api_configs:
                 try:
-                    response = self.session.get(api_url, timeout=30)
+                    headers = dict(self.session.headers)
+                    headers['Cookie'] = config['cookie']
+                    headers['Referer'] = config['referer']
+                    headers['Origin'] = config['referer'].rstrip('/')
+                    
+                    response = self.session.get(config['url'], headers=headers, timeout=20)
                     data = response.json()
+                    
+                    logger.info(f"API Response: {data.get('errno', 'no errno')} from {config['referer']}")
                     
                     if data.get('errno') == 0:
                         files = data.get('list', [])
                         if files:
                             file_info = files[0]
+                            logger.info(f"Found file: {file_info.get('server_filename', 'unknown')}")
                             return {
                                 "filename": file_info.get('server_filename', 'unknown'),
                                 "size": file_info.get('size', 0),
@@ -410,24 +448,95 @@ class TeraboxDownloader:
                                 "file_type": self.get_file_type(file_info.get('server_filename', '')),
                                 "is_video": self.is_video_file(file_info.get('server_filename', ''))
                             }
-                except:
+                except Exception as e:
+                    logger.error(f"API endpoint {config['referer']} failed: {e}")
                     continue
             
-            return {"error": "Failed to get file info from any endpoint"}
+            # Alternative scraping method if API fails
+            return self.scrape_file_info(url, shorturl)
             
         except Exception as e:
             logger.error(f"Error extracting file info: {e}")
-            return {"error": str(e)}
-    def get_download_link(self, fs_id):
+            return {"error": f"Failed to process URL: {str(e)}"}
+    
+    def scrape_file_info(self, original_url, shorturl):
+        """Backup scraping method when API fails"""
         try:
-            api_url = f"https://terabox.com/api/download?type=dlink&fidlist=[{fs_id}]"
-            response = self.session.get(api_url, timeout=30)
-            data = response.json()
+            # Try direct page scraping
+            scrape_urls = [
+                f"https://www.terabox.app/sharing/link?surl={shorturl}",
+                f"https://1024terabox.com/sharing/link?surl={shorturl}",
+                f"https://teraboxapp.com/sharing/link?surl={shorturl}"
+            ]
             
-            if data.get('errno') == 0:
-                dlinks = data.get('dlink', [])
-                if dlinks:
-                    return dlinks[0].get('dlink')
+            for scrape_url in scrape_urls:
+                try:
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Accept-Encoding': 'gzip, deflate',
+                        'Connection': 'keep-alive'
+                    }
+                    
+                    response = self.session.get(scrape_url, headers=headers, timeout=15)
+                    
+                    if 'window.yunData' in response.text:
+                        # Extract filename from page content
+                        filename_match = re.search(r'"server_filename":"([^"]+)"', response.text)
+                        size_match = re.search(r'"size":(\d+)', response.text)
+                        fs_id_match = re.search(r'"fs_id":(\d+)', response.text)
+                        
+                        if filename_match:
+                            filename = filename_match.group(1)
+                            size = int(size_match.group(1)) if size_match else 0
+                            fs_id = fs_id_match.group(1) if fs_id_match else None
+                            
+                            return {
+                                "filename": filename,
+                                "size": size,
+                                "fs_id": fs_id,
+                                "file_type": self.get_file_type(filename),
+                                "is_video": self.is_video_file(filename)
+                            }
+                except:
+                    continue
+            
+            return {"error": "Unable to extract file info from any source"}
+            
+        except Exception as e:
+            return {"error": f"Scraping failed: {str(e)}"}
+    
+    def get_download_link(self, fs_id):
+        """Updated download link extraction for 2025"""
+        if not fs_id:
+            return None
+            
+        try:
+            # Multiple download API endpoints
+            download_apis = [
+                f"https://www.terabox.app/api/download?type=dlink&fidlist=[{fs_id}]",
+                f"https://1024terabox.com/api/download?type=dlink&fidlist=[{fs_id}]",
+                f"https://teraboxapp.com/api/download?type=dlink&fidlist=[{fs_id}]"
+            ]
+            
+            for api_url in download_apis:
+                try:
+                    headers = dict(self.session.headers)
+                    headers['Cookie'] = Config.TERABOX_COOKIE
+                    
+                    response = self.session.get(api_url, headers=headers, timeout=20)
+                    data = response.json()
+                    
+                    if data.get('errno') == 0:
+                        dlinks = data.get('dlink', [])
+                        if dlinks:
+                            download_url = dlinks[0].get('dlink')
+                            if download_url:
+                                return download_url
+                except Exception as e:
+                    logger.error(f"Download API {api_url} failed: {e}")
+                    continue
             
             return None
             
@@ -459,7 +568,7 @@ class TeraboxDownloader:
     
     def is_video_file(self, filename):
         return self.get_file_type(filename) == "video"
-
+            
 class TeraboxBot:
     """Main bot class with configurable shortlink integration"""
     
