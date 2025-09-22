@@ -60,8 +60,8 @@ class Config:
     
     # Other Settings
     FREE_DOWNLOADS = int(os.getenv("FREE_DOWNLOADS", "3"))
-    TERABOX_COOKIE = os.getenv("TERABOX_COOKIE", "lang=en; BAIDUID=mobile123:FG=1; BDUSS=mobilesession456; STOKEN=token789; ndus=mobileworking123;
-    ")
+    TERABOX_COOKIE = os.getenv("TERABOX_COOKIE", "lang=en; BAIDUID=mobile123:FG=1; BDUSS=mobilesession456; STOKEN=token789; ndus=mobileworking123;")
+    
     MAX_FILE_SIZE = 1.5 * 1024 * 1024 * 1024  # 1.5GB for free users
     PREMIUM_MAX_SIZE = 2.5 * 1024 * 1024 * 1024  # 2.5GB for premium
     TOKEN_VALIDITY_HOURS = int(os.getenv("TOKEN_VALIDITY_HOURS", "24"))
