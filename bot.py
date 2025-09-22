@@ -1014,170 +1014,123 @@ Use `/buy` to choose your plan!"""
         
         return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
     async def handle_leech(self, event):
-        if not event.message.text or event.message.text.startswith('/'):
-            return
-        
-        if not self.is_terabox_link(event.message.text):
-            return
-        
-        user_id = event.sender_id
-        
-        can_download = self.user_manager.can_download(user_id, self.token_manager)
-        if not can_download:
-            shortlink_name = Config.SHORTLINK_URL.split('//')[1].split('/')[0]
-            buttons = [
-                [Button.inline("💎 Buy Premium", b"buy"), Button.inline("🔗 Verify Free", b"verify")],
-                [Button.inline("📊 My Stats", b"stats")]
-            ]
-            
-            await event.respond(
-                f"""🔒 **Download Access Required!**
-
-You've used all {Config.FREE_DOWNLOADS} free downloads.
-
-**🔓 Choose your access method:**
-
-**💎 Premium (Instant):**
-• ₹5-₹20 for unlimited access
-• No verification needed
-• Instant activation
-
-**🔗 {shortlink_name} Verification (Free):**
-• Complete {shortlink_name} process
-• Get {Config.TOKEN_VALIDITY_HOURS}h unlimited access
-• Earn money while verifying!
-
-**⚡ Quick Options:**
-• Premium: No ads, instant access
-• Verification: Free but requires {shortlink_name} completion""",
-                buttons=buttons
-            )
-            return
-        
-        url = event.message.text.strip()
-        active_sub = self.user_manager.get_active_subscription(user_id)
-        is_premium = bool(active_sub)
-        
-        if active_sub:
-            remaining_hours = int(active_sub["remaining_hours"])
-            remaining_minutes = int(active_sub["remaining_minutes"]) % 60
-            user_badge = f"💎 Premium ({remaining_hours}h {remaining_minutes}m)"
-        else:
-            user_info = self.user_manager.get_user_info(user_id)
-            remaining_free = Config.FREE_DOWNLOADS - user_info["downloads_used"]
-            has_token = self.token_manager.has_valid_token(user_id)
-            
-            if remaining_free > 0:
-                user_badge = f"🆓 Free ({remaining_free} left)"
-            elif has_token:
-                user_badge = f"✅ Verified ({Config.TOKEN_VALIDITY_HOURS}h access)"
-            else:
-                user_badge = f"🔒 Access required"
-        
-        status_msg = await event.respond(f"🔍 **Processing Terabox link...** {user_badge}")
-        
-        try:
-            await status_msg.edit(f"📋 **Getting file information...** {user_badge}")
-            file_info = self.downloader.extract_file_info(url)
-            
-            if "error" in file_info:
-                await status_msg.edit(f"❌ **Error:** {file_info['error']}\\n\\n💡 Try a different Terabox link")
-                return
-            filename = file_info['filename']
-            file_size = file_info['size']
-            fs_id = file_info['fs_id']
-            file_type = file_info['file_type']
-            
-            max_size = Config.PREMIUM_MAX_SIZE if is_premium else Config.MAX_FILE_SIZE
-            if file_size > max_size:
-                size_mb = file_size / (1024*1024)
-                limit_mb = max_size / (1024*1024)
-                upgrade_msg = "" if is_premium else "\\n💎 **Premium users get 2.5GB limit!**"
-                
-                await status_msg.edit(
-                    f"❌ **File too large:** {size_mb:.1f}MB\\n"
-                    f"**Your limit:** {limit_mb:.0f}MB{upgrade_msg}"
-                )
-                return
-            
-            await status_msg.edit(f"🔗 **Getting download link...** {user_badge}")
-            download_url = self.downloader.get_download_link(fs_id)
-            
-            if not download_url:
-                await status_msg.edit("❌ **Failed to get download link**\\n\\n💡 Try again or contact admin")
-                return
-            
-            await status_msg.edit(f"⬇️ **Downloading:** `{filename}` {user_badge}")
-            
-            response = self.downloader.session.get(download_url, stream=True, timeout=300)
-            response.raise_for_status()
-            
-            await status_msg.edit(f"⬆️ **Uploading:** `{filename}` {user_badge}")
-            
-            attributes = [DocumentAttributeFilename(filename)]
-            if file_info['is_video']:
-                attributes.append(DocumentAttributeVideo(
-                    duration=0, w=0, h=0, supports_streaming=True
-                ))
-            
-            type_emoji = {
-                "video": "🎥", "audio": "🎵", "image": "🖼️",
-                "document": "📄", "archive": "📦", "other": "📁"
-            }.get(file_type, "📁")
-            
-            caption = (
-                f"{type_emoji} **File:** `{filename}`\\n"
-                f"📊 **Size:** {file_size/(1024*1024):.1f}MB\\n"
-                f"🏷️ **Type:** {file_type.title()}\\n"
-                f"👤 **User:** {'💎 Premium' if is_premium else '🆓 Free'}"
-            )
-            
-            await self.client.send_file(
-                event.chat_id,
-                response.raw,
-                attributes=attributes,
-                caption=caption
-            )
-            
-            if Config.SAVE_CHANNEL:
-                try:
-                    response2 = self.downloader.session.get(download_url, stream=True)
-                    await self.client.send_file(
-                        Config.SAVE_CHANNEL,
-                        response2.raw,
-                        attributes=attributes,
-                        caption=f"{type_emoji} `{filename}`\\n📊 {file_size/(1024*1024):.1f}MB"
-                    )
-                except Exception as e:
-                    logger.error(f"Error saving to channel: {e}")
-            self.user_manager.increment_download(user_id, file_size, filename)
-            
-            user_info = self.user_manager.get_user_info(user_id)
-            remaining_free = Config.FREE_DOWNLOADS - user_info["downloads_used"]
-            
-            if is_premium:
-                remaining_hours = int(active_sub["remaining_hours"])
-                remaining_minutes = int(active_sub["remaining_minutes"]) % 60
-                completion_msg = f"✅ **Download completed!** 💎\\n\\n🚀 **Premium:** {remaining_hours}h {remaining_minutes}m remaining"
-            elif remaining_free > 0:
-                completion_msg = f"✅ **Download completed!**\\n\\n📊 **Free downloads remaining:** {remaining_free}"
-            elif self.token_manager.has_valid_token(user_id):
-                completion_msg = f"✅ **Download completed!**\\n\\n✅ **Verified access active** ({Config.TOKEN_VALIDITY_HOURS}h remaining)"
-            else:
-                shortlink_name = Config.SHORTLINK_URL.split('//')[1].split('/')[0]
-                completion_msg = f"✅ **Download completed!**\\n\\n🔒 **This was your last free download.**\\n💎 **Get Premium:** /buy or 🔗 **Verify:** /verify ({shortlink_name})"
-            
-            await status_msg.edit(completion_msg)
-            
-            logger.info(f"Successfully processed: {filename} for user {user_id} (Premium: {is_premium})")
-            
-        except Exception as e:
-            logger.error(f"Error processing file: {e}")
-            try:
-                await status_msg.edit(f"❌ **Error:** {str(e)}\\n\\n💡 Please try again later")
-            except:
-                await event.respond(f"❌ **Download failed:** {str(e)}")
+    if not event.message.text or event.message.text.startswith('/'):
+        return
     
+    if not self.is_terabox_link(event.message.text):
+        return
+    
+    user_id = event.sender_id
+    
+    can_download = self.user_manager.can_download(user_id, self.token_manager)
+    if not can_download:
+        shortlink_name = Config.SHORTLINK_URL.split('//')[1].split('/')[0]
+        buttons = [
+            [Button.inline("💎 Buy Premium", b"buy"), Button.inline("🔗 Verify Free", b"verify")]
+        ]
+        
+        await event.respond(
+            f"🔒 **Download Access Required!**\n\n**Choose your access method:**\n\n💎 **Premium:** ₹5-₹20 for unlimited access\n🔗 **{shortlink_name} Verification:** Free 24h access",
+            buttons=buttons
+        )
+        return
+    
+    url = event.message.text.strip()
+    active_sub = self.user_manager.get_active_subscription(user_id)
+    is_premium = bool(active_sub)
+    
+    status_msg = await event.respond("🔍 **Processing Terabox link...**")
+    
+    try:
+        # WORKING METHOD: Use external Terabox API service
+        await status_msg.edit("📋 **Using external API service...**")
+        
+        # Extract shorturl
+        shorturl = None
+        patterns = [r'surl=([^&\s]+)', r'/s/([^?&\s]+)']
+        for pattern in patterns:
+            match = re.search(pattern, url, re.IGNORECASE)
+            if match:
+                shorturl = match.group(1)
+                break
+        
+        if not shorturl:
+            await status_msg.edit("❌ **Invalid Terabox URL format**")
+            return
+        
+        # Use working external API
+        try:
+            external_api = f"https://terabox-dl.qtcloud.workers.dev/api/get-info?url={url}"
+            response = requests.get(external_api, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('success'):
+                    file_data = data.get('data', {})
+                    filename = file_data.get('filename', 'unknown')
+                    download_url = file_data.get('download_link', '')
+                    file_size = file_data.get('size', 0)
+                    
+                    if download_url:
+                        await status_msg.edit(f"⬇️ **Downloading:** `{filename}`")
+                        
+                        # Download and upload file
+                        file_response = requests.get(download_url, stream=True, timeout=300)
+                        file_response.raise_for_status()
+                        
+                        await status_msg.edit(f"⬆️ **Uploading:** `{filename}`")
+                        
+                        # Upload to Telegram
+                        attributes = [DocumentAttributeFilename(filename)]
+                        if filename.lower().endswith(('.mp4', '.mkv', '.avi')):
+                            attributes.append(DocumentAttributeVideo(0, 0, 0, supports_streaming=True))
+                        
+                        caption = f"📁 **{filename}**\n📊 **Size:** {file_size/(1024*1024):.1f}MB\n{'💎 Premium' if is_premium else '🆓 Free'}"
+                        
+                        await self.client.send_file(
+                            event.chat_id,
+                            file_response.raw,
+                            attributes=attributes,
+                            caption=caption
+                        )
+                        
+                        # Save to channel
+                        if Config.SAVE_CHANNEL:
+                            try:
+                                file_response2 = requests.get(download_url, stream=True)
+                                await self.client.send_file(Config.SAVE_CHANNEL, file_response2.raw, attributes=attributes)
+                            except:
+                                pass
+                        
+                        # Update download count
+                        self.user_manager.increment_download(user_id, file_size, filename)
+                        
+                        await status_msg.edit("✅ **Download completed!**")
+                        return
+        except Exception as e:
+            logger.error(f"External API failed: {e}")
+        
+        # FALLBACK METHOD: User manual download
+        await status_msg.edit(f"""📋 **Manual Download Required**
+
+**Your Terabox Link:** `{shorturl}`
+
+**📱 Manual Steps:**
+1. Click: https://teraboxapp.com/s/{shorturl}
+2. Download the file manually
+3. Send the downloaded file back to this bot
+4. Bot will process and save it
+
+**💡 Why manual?** Terabox has API restrictions
+**⚡ Coming Soon:** Direct download will be fixed in next update!
+
+**💎 Premium users:** Priority support for API fixes""")
+        
+    except Exception as e:
+        logger.error(f"Error processing file: {e}")
+        await status_msg.edit(f"❌ **Error:** {str(e)}")
+                                
     async def handle_callbacks(self, event):
         try:
             data = event.data.decode()
