@@ -1143,6 +1143,25 @@ Videos, documents, images, audio, archives, and more!
 Need help? Contact admin or use the bot commands above! 🚀"""
         
         await event.edit(help_text)
+        
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is healthy!")
+    
+    def log_message(self, format, *args):
+        pass  # Disable logging
+
+def start_health_server():
+    server = HTTPServer(('0.0.0.0', 8080), HealthHandler)
+    server.serve_forever()
+
+# Start health check server in background
+threading.Thread(target=start_health_server, daemon=True).start()
 
 if __name__ == "__main__":
     # Load environment variables
