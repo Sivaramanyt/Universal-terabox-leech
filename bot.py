@@ -1013,106 +1013,99 @@ Use `/buy` to choose your plan!"""
         ]
         
         return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
-    async def handle_leech(self, event):
-    if not event.message.text or event.message.text.startswith('/'):
-        return
-    
-    if not self.is_terabox_link(event.message.text):
-        return
-    
-    user_id = event.sender_id
-    
-    can_download = self.user_manager.can_download(user_id, self.token_manager)
-    if not can_download:
-        shortlink_name = Config.SHORTLINK_URL.split('//')[1].split('/')[0]
-        buttons = [
-            [Button.inline("💎 Buy Premium", b"buy"), Button.inline("🔗 Verify Free", b"verify")]
-        ]
-        
-        await event.respond(
-            f"🔒 **Download Access Required!**\n\n**Choose your access method:**\n\n💎 **Premium:** ₹5-₹20 for unlimited access\n🔗 **{shortlink_name} Verification:** Free 24h access",
-            buttons=buttons
-        )
-        return
-    
-    url = event.message.text.strip()
-    active_sub = self.user_manager.get_active_subscription(user_id)
-    is_premium = bool(active_sub)
-    
-    status_msg = await event.respond("🔍 **Processing Terabox link...**")
-    
-    try:
-        # WORKING METHOD: Use external Terabox API service
-        await status_msg.edit("📋 **Using external API service...**")
-        
-        # Extract shorturl
-        shorturl = None
-        patterns = [r'surl=([^&\s]+)', r'/s/([^?&\s]+)']
-        for pattern in patterns:
-            match = re.search(pattern, url, re.IGNORECASE)
-            if match:
-                shorturl = match.group(1)
-                break
-        
-        if not shorturl:
-            await status_msg.edit("❌ **Invalid Terabox URL format**")
+
+        async def handle_leech(self, event):
+        if not event.message.text or event.message.text.startswith('/'):
             return
         
-        # Use working external API
-        try:
-            external_api = f"https://terabox-dl.qtcloud.workers.dev/api/get-info?url={url}"
-            response = requests.get(external_api, timeout=15)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                if data.get('success'):
-                    file_data = data.get('data', {})
-                    filename = file_data.get('filename', 'unknown')
-                    download_url = file_data.get('download_link', '')
-                    file_size = file_data.get('size', 0)
-                    
-                    if download_url:
-                        await status_msg.edit(f"⬇️ **Downloading:** `{filename}`")
-                        
-                        # Download and upload file
-                        file_response = requests.get(download_url, stream=True, timeout=300)
-                        file_response.raise_for_status()
-                        
-                        await status_msg.edit(f"⬆️ **Uploading:** `{filename}`")
-                        
-                        # Upload to Telegram
-                        attributes = [DocumentAttributeFilename(filename)]
-                        if filename.lower().endswith(('.mp4', '.mkv', '.avi')):
-                            attributes.append(DocumentAttributeVideo(0, 0, 0, supports_streaming=True))
-                        
-                        caption = f"📁 **{filename}**\n📊 **Size:** {file_size/(1024*1024):.1f}MB\n{'💎 Premium' if is_premium else '🆓 Free'}"
-                        
-                        await self.client.send_file(
-                            event.chat_id,
-                            file_response.raw,
-                            attributes=attributes,
-                            caption=caption
-                        )
-                        
-                        # Save to channel
-                        if Config.SAVE_CHANNEL:
-                            try:
-                                file_response2 = requests.get(download_url, stream=True)
-                                await self.client.send_file(Config.SAVE_CHANNEL, file_response2.raw, attributes=attributes)
-                            except:
-                                pass
-                        
-                        # Update download count
-                        self.user_manager.increment_download(user_id, file_size, filename)
-                        
-                        await status_msg.edit("✅ **Download completed!**")
-                        return
-        except Exception as e:
-            logger.error(f"External API failed: {e}")
+        if not self.is_terabox_link(event.message.text):
+            return
         
-        # FALLBACK METHOD: User manual download
-        await status_msg.edit(f"""📋 **Manual Download Required**
+        user_id = event.sender_id
+        
+        can_download = self.user_manager.can_download(user_id, self.token_manager)
+        if not can_download:
+            shortlink_name = Config.SHORTLINK_URL.split('//')[1].split('/')[0]
+            buttons = [
+                [Button.inline("💎 Buy Premium", b"buy"), Button.inline("🔗 Verify Free", b"verify")]
+            ]
+            
+            await event.respond(
+                f"🔒 **Download Access Required!**\\n\\n**Choose your access method:**\\n\\n💎 **Premium:** ₹5-₹20 for unlimited access\\n🔗 **{shortlink_name} Verification:** Free 24h access",
+                buttons=buttons
+            )
+            return
+        
+        url = event.message.text.strip()
+        active_sub = self.user_manager.get_active_subscription(user_id)
+        is_premium = bool(active_sub)
+        
+        status_msg = await event.respond("🔍 **Processing Terabox link...**")
+        
+        try:
+            await status_msg.edit("📋 **Using external API service...**")
+            
+            shorturl = None
+            patterns = [r'surl=([^&\\s]+)', r'/s/([^?&\\s]+)']
+            for pattern in patterns:
+                match = re.search(pattern, url, re.IGNORECASE)
+                if match:
+                    shorturl = match.group(1)
+                    break
+            
+            if not shorturl:
+                await status_msg.edit("❌ **Invalid Terabox URL format**")
+                return
+            
+            try:
+                external_api = f"https://terabox-dl.qtcloud.workers.dev/api/get-info?url={url}"
+                response = requests.get(external_api, timeout=15)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    if data.get('success'):
+                        file_data = data.get('data', {})
+                        filename = file_data.get('filename', 'unknown')
+                        download_url = file_data.get('download_link', '')
+                        file_size = file_data.get('size', 0)
+                        
+                        if download_url:
+                            await status_msg.edit(f"⬇️ **Downloading:** `{filename}`")
+                            
+                            file_response = requests.get(download_url, stream=True, timeout=300)
+                            file_response.raise_for_status()
+                            
+                            await status_msg.edit(f"⬆️ **Uploading:** `{filename}`")
+                            
+                            attributes = [DocumentAttributeFilename(filename)]
+                            if filename.lower().endswith(('.mp4', '.mkv', '.avi')):
+                                attributes.append(DocumentAttributeVideo(0, 0, 0, supports_streaming=True))
+                            
+                            caption = f"📁 **{filename}**\\n📊 **Size:** {file_size/(1024*1024):.1f}MB\\n{'💎 Premium' if is_premium else '🆓 Free'}"
+                            
+                            await self.client.send_file(
+                                event.chat_id,
+                                file_response.raw,
+                                attributes=attributes,
+                                caption=caption
+                            )
+                            
+                            if Config.SAVE_CHANNEL:
+                                try:
+                                    file_response2 = requests.get(download_url, stream=True)
+                                    await self.client.send_file(Config.SAVE_CHANNEL, file_response2.raw, attributes=attributes)
+                                except:
+                                    pass
+                            
+                            self.user_manager.increment_download(user_id, file_size, filename)
+                            
+                            await status_msg.edit("✅ **Download completed!**")
+                            return
+            except Exception as e:
+                logger.error(f"External API failed: {e}")
+            
+            await status_msg.edit(f"""📋 **Manual Download Required**
 
 **Your Terabox Link:** `{shorturl}`
 
@@ -1126,11 +1119,11 @@ Use `/buy` to choose your plan!"""
 **⚡ Coming Soon:** Direct download will be fixed in next update!
 
 **💎 Premium users:** Priority support for API fixes""")
+            
+        except Exception as e:
+            logger.error(f"Error processing file: {e}")
+            await status_msg.edit(f"❌ **Error:** {str(e)}")
         
-    except Exception as e:
-        logger.error(f"Error processing file: {e}")
-        await status_msg.edit(f"❌ **Error:** {str(e)}")
-                                
     async def handle_callbacks(self, event):
         try:
             data = event.data.decode()
