@@ -1014,7 +1014,7 @@ Use `/buy` to choose your plan!"""
         
         return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
 
-        async def handle_leech(self, event):
+async def handle_leech(self, event):
         if not event.message.text or event.message.text.startswith('/'):
             return
         
