@@ -32,19 +32,19 @@ class Config:
     
     # Essential Bot Settings
     BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-    API_ID = int(os.getenv("API_ID", "0"))
-    API_HASH = os.getenv("API_HASH", "")
+    API_ID = int(os.getenv("API_ID", "29542645"))
+    API_HASH = os.getenv("API_HASH", "06e505b8418565356ae79365df5d69e0")
     
     # Channels
-    SAVE_CHANNEL = int(os.getenv("SAVE_CHANNEL", "0"))
-    PAYMENT_CHANNEL = int(os.getenv("PAYMENT_CHANNEL", "0"))
+    SAVE_CHANNEL = int(os.getenv("SAVE_CHANNEL", "-1003068078005"))
+    PAYMENT_CHANNEL = int(os.getenv("PAYMENT_CHANNEL", "-1003037490791"))
     
     # Admin Settings
-    OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+    OWNER_ID = int(os.getenv("OWNER_ID", "1206988513"))
     ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split() if x.strip()]
     
     # Payment System
-    GPAY_UPI_ID = os.getenv("GPAY_UPI_ID", "")
+    GPAY_UPI_ID = os.getenv("GPAY_UPI_ID", "sivaramanc49@okaxis")
     
     # CONFIGURABLE SHORTLINK SYSTEM - Change these for any service!
     SHORTLINK_URL = os.getenv("SHORTLINK_URL", "https://arolinks.com")
@@ -60,7 +60,8 @@ class Config:
     
     # Other Settings
     FREE_DOWNLOADS = int(os.getenv("FREE_DOWNLOADS", "3"))
-    TERABOX_COOKIE = os.getenv("TERABOX_COOKIE", "")
+    TERABOX_COOKIE = os.getenv("TERABOX_COOKIE", "lang=en; BAIDUID=mobile123:FG=1; BDUSS=mobilesession456; STOKEN=token789; ndus=mobileworking123;
+    ")
     MAX_FILE_SIZE = 1.5 * 1024 * 1024 * 1024  # 1.5GB for free users
     PREMIUM_MAX_SIZE = 2.5 * 1024 * 1024 * 1024  # 2.5GB for premium
     TOKEN_VALIDITY_HOURS = int(os.getenv("TOKEN_VALIDITY_HOURS", "24"))
